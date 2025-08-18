@@ -1,4 +1,5 @@
-# 用于实现代理http请求到grpc服务的网关框架
+# grpcgateway 
+## 用于实现动态代理http请求到grpc服务的网关框架
 > **服务自动发现，增删grpc服务无需重启网关服务**
 > **基于grpc反射服务，无需重启自动检测和更新grpc protobuf**
 
