@@ -71,6 +71,7 @@ func (ErrCode) EnumDescriptor() ([]byte, []int) {
 type EchoReq struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Echo          string                 `protobuf:"bytes,1,opt,name=echo,proto3" json:"echo,omitempty"`
+	Remark        string                 `protobuf:"bytes,2,opt,name=remark,proto3" json:"remark,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -112,9 +113,17 @@ func (x *EchoReq) GetEcho() string {
 	return ""
 }
 
+func (x *EchoReq) GetRemark() string {
+	if x != nil {
+		return x.Remark
+	}
+	return ""
+}
+
 type EchoResp struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Echo          string                 `protobuf:"bytes,2,opt,name=echo,proto3" json:"echo,omitempty"`
+	Echo          string                 `protobuf:"bytes,1,opt,name=echo,proto3" json:"echo,omitempty"`
+	Ts            int64                  `protobuf:"varint,2,opt,name=ts,proto3" json:"ts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -156,16 +165,25 @@ func (x *EchoResp) GetEcho() string {
 	return ""
 }
 
+func (x *EchoResp) GetTs() int64 {
+	if x != nil {
+		return x.Ts
+	}
+	return 0
+}
+
 var File_echo_proto protoreflect.FileDescriptor
 
 const file_echo_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"echo.proto\x12\x04echo\x1a\text.proto\"\x1d\n" +
+	"echo.proto\x12\x04echo\x1a\text.proto\"5\n" +
 	"\aEchoReq\x12\x12\n" +
-	"\x04echo\x18\x01 \x01(\tR\x04echo\"\x1e\n" +
+	"\x04echo\x18\x01 \x01(\tR\x04echo\x12\x16\n" +
+	"\x06remark\x18\x02 \x01(\tR\x06remark\".\n" +
 	"\bEchoResp\x12\x12\n" +
-	"\x04echo\x18\x02 \x01(\tR\x04echo* \n" +
+	"\x04echo\x18\x01 \x01(\tR\x04echo\x12\x0e\n" +
+	"\x02ts\x18\x02 \x01(\x03R\x02ts* \n" +
 	"\aErrCode\x12\a\n" +
 	"\x03Nil\x10\x00\x12\f\n" +
 	"\aErrFail\x10\xe9\a2\xe1\x01\n" +
