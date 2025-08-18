@@ -138,7 +138,7 @@ func initGrpcResolver() error {
 	return nil
 }
 
-func InvokeGrpc(packageName, svcName, methodName string, paramsJson []byte, header map[string][]string, callOpts []grpc.CallOption) (*dynamicpb.Message, metadata.MD, error) {
+func InvokeGrpc(packageName, svcName, methodName string, params interface{}, header map[string][]string, callOpts []grpc.CallOption) (*dynamicpb.Message, metadata.MD, error) {
 	rpcMetadataAny, ok := rpcMetadataMap.Load(fmt.Sprintf("%s.%s.%s", packageName, svcName, methodName))
 	if !ok {
 		return nil, nil, ErrServiceNotFound
@@ -153,7 +153,7 @@ func InvokeGrpc(packageName, svcName, methodName string, paramsJson []byte, head
 	c, cancel := getGrpcCtx(cfg, header)
 	defer cancel()
 
-	req, err := makeRpcReq(paramsJson, rpcMeta)
+	req, err := makeRpcReq(params, rpcMeta)
 	if err != nil {
 		return nil, nil, err
 	}
