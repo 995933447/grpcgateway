@@ -3,374 +3,313 @@ package grpcgateway
 import (
 	"context"
 	"fmt"
-	"sync"
+	"strings"
+	"time"
 
 	"github.com/995933447/fastlog"
-	"github.com/995933447/fastlog/logger"
-	"github.com/995933447/fastlog/logger/writer"
-	"github.com/995933447/microgosuit"
-	"github.com/995933447/microgosuit/discovery"
-	"github.com/995933447/microgosuit/factory"
-	"github.com/995933447/runtimeutil"
+	"github.com/995933447/stringhelper-go"
 	"github.com/jhump/protoreflect/desc"
-	"github.com/jhump/protoreflect/grpcreflect"
+	json "github.com/json-iterator/go"
+	"github.com/valyala/fasthttp"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-var rpcMetadataMap sync.Map // target.method => rpcMetadata
-
-var (
-	grpcConns  = make(map[string]*grpc.ClientConn)
-	grpcConnMu sync.RWMutex
-)
-
-type RpcMetadata struct {
-	svcName               string
-	svcFullyQualifiedName string
-	method                *desc.MethodDescriptor
-	invokeMethodName      string
-	reqPool               *sync.Pool
-	respPool              *sync.Pool
-}
-
-func (r *RpcMetadata) GetServiceName() string {
-	return r.svcName
-}
-
-func (r *RpcMetadata) GetServiceFullyQualifiedName() string {
-	return r.svcFullyQualifiedName
-}
-
-func (r *RpcMetadata) GetMethod() *desc.MethodDescriptor {
-	return r.method
-}
-
-func (r *RpcMetadata) GetInvokeMethodName() string {
-	return r.invokeMethodName
-}
-
-type Conf struct {
-	ServiceName string
-	GrpcConf
-	LogConf
-}
-
-type GrpcConf struct {
-	MicroGoSuitConf
-	GrpcResolveSchema                  string
-	GrpcClientOptions                  []grpc.DialOption
-	CallClientTimeoutMs                int64
-	InitGrpcResolverFunc               func() error
-	InitAndWatchGrpcClientMetadataFunc func(resolve func(svcHost string, svcPort int) error) error
-}
-
-type MicroGoSuitConf struct {
-	MicroGoSuitMetadataConfFilePath string
-	MicroGoSuitDiscoverPrefix       string
-}
-
-type LogConf struct {
-	Log          logger.LogConf
-	LogAlertFunc writer.AlertFunc
-}
-
-var cfg *Conf
-
-func Init(c *Conf) error {
-	if err := checkConf(c); err != nil {
+func HandleHttpDefault(host string, port int) error {
+	err := HandleHttp(host, port, ResolveRpcRouteFromHttp, ResolveRpcParamsFromHttp, RespHttp)
+	if err != nil {
+		fastlog.Errorf("err: %+v", err)
 		return err
 	}
-
-	cfg = c
-
-	if err := initLog(); err != nil {
-		return err
-	}
-
-	if err := initGrpcResolver(); err != nil {
-		return err
-	}
-
-	if err := initRpcWatcher(); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-func checkConf(cfg *Conf) error {
-	if cfg.ServiceName == "" {
-		return fmt.Errorf("config.ServiceName is empty")
-	}
+type ResolveRpcRouteFunc func(ctx *fasthttp.RequestCtx) (string, string, string, error)
 
-	if cfg.InitGrpcResolverFunc == nil && cfg.MicroGoSuitConf.MicroGoSuitMetadataConfFilePath == "" {
-		return fmt.Errorf("must set config.InitGrpcResolverFunc or config.MicroGoSuitMetadataConfFilePath")
-	}
+type ResolveRpcParamsFunc func(ctx *fasthttp.RequestCtx, method *desc.MethodDescriptor) ([]byte, map[string][]string, []grpc.CallOption, error)
 
-	if cfg.InitAndWatchGrpcClientMetadataFunc == nil && cfg.MicroGoSuitConf.MicroGoSuitMetadataConfFilePath == "" {
-		return fmt.Errorf("must set config.InitGrpcResolverFunc or config.MicroGoSuitMetadataConfFilePath")
+func ClearGrpcConns() {
+	grpcConnMu.Lock()
+	defer grpcConnMu.Unlock()
+	for _, conn := range grpcConns {
+		_ = conn.Close()
 	}
-
-	if cfg.GrpcResolveSchema == "" {
-		return fmt.Errorf("config.GrpcResolveSchema is empty")
-	}
-
-	return nil
+	grpcConns = make(map[string]*grpc.ClientConn)
 }
 
-func initGrpcResolver() error {
-	if cfg.InitGrpcResolverFunc != nil {
-		if err := cfg.InitGrpcResolverFunc(); err != nil {
-			return err
-		}
-		return nil
-	}
+func HandleHttp(
+	host string,
+	port int,
+	resolveRpcRouteFunc ResolveRpcRouteFunc,
+	resolveRpcParamsFunc ResolveRpcParamsFunc,
+	response func(res *ResponseHttp),
+) error {
+	defer ClearGrpcConns()
 
-	err := microgosuit.InitSuitWithGrpc(context.TODO(), cfg.MicroGoSuitMetadataConfFilePath, cfg.GrpcResolveSchema, cfg.MicroGoSuitDiscoverPrefix)
-	if err != nil {
-		fastlog.Errorf("grpc resolver init err: %v", err)
-		return err
-	}
-
-	return nil
-}
-
-func InvokeGrpc(packageName, svcName, methodName string, paramsJson []byte, header map[string][]string, callOpts []grpc.CallOption) (*dynamicpb.Message, metadata.MD, error) {
-	rpcMetadataAny, ok := rpcMetadataMap.Load(fmt.Sprintf("%s.%s.%s", packageName, svcName, methodName))
-	if !ok {
-		return nil, nil, ErrServiceNotFound
-	}
-
-	rpcMeta := rpcMetadataAny.(*RpcMetadata)
-
-	if rpcMeta.method.IsServerStreaming() || rpcMeta.method.IsClientStreaming() {
-		return nil, nil, ErrNotSupportHttpAccess
-	}
-
-	c, cancel := getGrpcCtx(cfg, header)
-	defer cancel()
-
-	req, err := makeRpcReq(paramsJson, rpcMeta)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	defer func() {
-		req.Reset()
-		rpcMeta.reqPool.Put(req)
-	}()
-
-	conn, err := makeRpcConn(packageName, svcName)
-	if err != nil {
-		fastlog.Errorf("err:%v", err)
-		return nil, nil, err
-	}
-
-	respHeader := metadata.New(make(map[string]string))
-	var existsRespHeader bool
-	for _, opt := range callOpts {
-		switch opt.(type) {
-		case grpc.HeaderCallOption:
-			respHeader = *opt.(grpc.HeaderCallOption).HeaderAddr
-			existsRespHeader = true
-		}
-		if existsRespHeader {
-			break
-		}
-	}
-	if !existsRespHeader {
-		callOpts = append(callOpts, grpc.Header(&respHeader))
-	}
-	//resp, err := grpcdynamic.NewStub(conn).InvokeRpc(c, rpcMeta.method, req, callOpts...)
-	resp := rpcMeta.respPool.Get().(*dynamicpb.Message)
-	err = conn.Invoke(c, rpcMeta.invokeMethodName, req, resp, callOpts...)
-
-	return resp, respHeader, err
-}
-
-func makeRpcConn(packageName, svcName string) (*grpc.ClientConn, error) {
-	target := fmt.Sprintf("%s:///%s.%s", cfg.GrpcResolveSchema, packageName, svcName)
-	grpcConnMu.RLock()
-	conn, ok := grpcConns[target]
-	grpcConnMu.RUnlock()
-	if !ok {
-		grpcConnMu.Lock()
-		defer grpcConnMu.Unlock()
-		conn, ok = grpcConns[target]
-		if !ok {
-			var err error
-			conn, err = grpc.NewClient(fmt.Sprintf("%s:///%s.%s", cfg.GrpcResolveSchema, packageName, svcName), GetGrpcClientOptions()...)
-			if err != nil {
-				fastlog.Errorf("err:%v", err)
-				return nil, err
-			}
-
-			grpcConns[target] = conn
-		}
-	}
-
-	return conn, nil
-}
-
-func initLog() error {
-	fastlog.SetModuleName(cfg.ServiceName)
-
-	if err := fastlog.InitDefaultCfgLoader("", &cfg.Log); err != nil {
-		return err
-	}
-
-	if err := fastlog.InitDefaultLogger(cfg.LogAlertFunc); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func initRpcWatcher() error {
-	if cfg.InitAndWatchGrpcClientMetadataFunc != nil {
-		return cfg.InitAndWatchGrpcClientMetadataFunc(resolve)
-	}
-
-	disc, err := factory.GetOrMakeDiscovery(cfg.MicroGoSuitDiscoverPrefix)
-	if err != nil {
-		return err
-	}
-
-	disc.OnSrvUpdated(func(ctx context.Context, evt discovery.Evt, svc *discovery.Service) {
-		switch evt {
-		case discovery.EvtUpdated:
-			leastNode := svc.Nodes[len(svc.Nodes)-1]
-			if err = resolve(leastNode.Host, leastNode.Port); err != nil {
-				fastlog.Errorf("err:%v", err)
-			}
-		case discovery.EvtDeleted:
-			var rmKeys []string
-			rpcMetadataMap.Range(func(key, value interface{}) bool {
-				if v, ok := value.(*RpcMetadata); ok && v.svcFullyQualifiedName == svc.SrvName {
-					rmKeys = append(rmKeys, key.(string))
-				}
-				return true
+	err := fasthttp.ListenAndServe(fmt.Sprintf("%s:%d", host, port), func(ctx *fasthttp.RequestCtx) {
+		packageName, svcName, methodName, err := resolveRpcRouteFunc(ctx)
+		if err != nil {
+			response(&ResponseHttp{
+				Ctx:     ctx,
+				Err:     err,
+				Service: svcName,
+				Method:  methodName,
 			})
-			for _, key := range rmKeys {
-				rpcMetadataMap.Delete(key)
-			}
-		default:
+			return
 		}
+
+		rpcMetadataAny, ok := rpcMetadataMap.Load(fmt.Sprintf("%s.%s.%s", packageName, svcName, methodName))
+		if !ok {
+			response(&ResponseHttp{
+				Ctx:     ctx,
+				Err:     ErrServiceNotFound,
+				Service: svcName,
+				Method:  methodName,
+			})
+			return
+		}
+
+		rpcMeta := rpcMetadataAny.(*RpcMetadata)
+
+		paramsJson, header, callOpts, err := resolveRpcParamsFunc(ctx, rpcMeta.method)
+		if err != nil {
+			response(&ResponseHttp{
+				Ctx:       ctx,
+				Err:       err,
+				Service:   svcName,
+				Method:    methodName,
+				ReqHeader: header,
+			})
+
+			return
+		}
+
+		resp, respHeader, err := InvokeGrpc(packageName, svcName, methodName, paramsJson, header, callOpts)
+
+		defer func() {
+			if resp != nil {
+				resp.Reset()
+				rpcMeta.respPool.Put(resp)
+			}
+		}()
+
+		respHttp := &ResponseHttp{
+			Ctx:          ctx,
+			Err:          err,
+			Service:      svcName,
+			Method:       methodName,
+			RespMetadata: respHeader,
+			ReqHeader:    header,
+		}
+
+		if resp != nil {
+			respHttp.GrpcResp = resp
+		}
+
+		response(respHttp)
+
+		return
+	})
+	if err != nil {
+		fastlog.Errorf("err: %+v", err)
+		return err
+	}
+	return nil
+}
+
+func ResolveRpcRouteFromHttp(ctx *fasthttp.RequestCtx) (string, string, string, error) {
+	path := string(ctx.Path())
+	if path == "" {
+		return "", "", "", ErrServiceNotFound
+	}
+
+	pathComponents := strings.Split(path, "/")
+	if len(pathComponents) < 3 {
+		return "", "", "", ErrServiceNotFound
+	}
+
+	var packageName, svcName, methodName string
+	if len(pathComponents) < 4 {
+		svcName, methodName = pathComponents[1], pathComponents[2]
+		packageName = svcName
+	} else {
+		packageName, svcName, methodName = pathComponents[1], pathComponents[2], pathComponents[3]
+	}
+
+	if packageName != "" {
+		packageName = stringhelper.LowerFirstASCII(packageName)
+	}
+
+	return packageName, svcName, methodName, nil
+}
+
+func ResolveRpcParamsFromHttp(ctx *fasthttp.RequestCtx, _ *desc.MethodDescriptor) ([]byte, map[string][]string, []grpc.CallOption, error) {
+	header := make(map[string][]string)
+	ctx.Request.Header.VisitAll(func(key, value []byte) {
+		k := strings.ToLower(string(key))
+		// https://github.com/grpc/grpc-go/blob/master/internal/transport/http2_server.go#L417
+		if k == "connection" {
+			return
+		}
+		header[k] = []string{string(value)}
 	})
 
-	svcs, err := disc.LoadAll(context.TODO())
+	j, err := HttpParamsToJson(ctx)
 	if err != nil {
-		fastlog.Errorf("err:%v", err)
-		return err
+		return nil, nil, nil, err
 	}
 
-	resolveNodes := make(map[string]*discovery.Node)
-	for _, svc := range svcs {
-		leastNode := svc.Nodes[len(svc.Nodes)-1]
-		resolveNodes[fmt.Sprintf("%s:%d", leastNode.Host, leastNode.Port)] = leastNode
-	}
+	return j, header, nil, nil
+}
 
-	eg := runtimeutil.NewErrGrp()
-	for _, node := range resolveNodes {
-		leastNode := node
-		eg.Go(func() error {
-			if err = resolve(leastNode.Host, leastNode.Port); err != nil {
-				fastlog.Errorf("err:%v", err)
-				return err
+func HttpParamsToJson(ctx *fasthttp.RequestCtx) ([]byte, error) {
+	params := make(map[string]any)
+
+	switch string(ctx.Method()) {
+	case fasthttp.MethodGet, fasthttp.MethodDelete:
+		// GET/DELETE → query string
+		ctx.QueryArgs().VisitAll(func(key, value []byte) {
+			k := string(key)
+			v := string(value)
+			if old, ok := params[k]; ok {
+				// 如果已有值，转成 slice
+				switch old := old.(type) {
+				case []string:
+					params[k] = append(old, v)
+				case string:
+					params[k] = []string{old, v}
+				}
+			} else {
+				params[k] = v
 			}
-			return nil
+		})
+
+	case fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch:
+		// POST/PUT/PATCH → 尝试 JSON，否则解析 form
+		contentType := string(ctx.Request.Header.ContentType())
+		if contentType == "application/json" {
+			// 直接返回 body
+			return ctx.PostBody(), nil
+		}
+		// 处理 x-www-form-urlencoded / multipart
+		ctx.PostArgs().VisitAll(func(key, value []byte) {
+			k := string(key)
+			v := string(value)
+			if old, ok := params[k]; ok {
+				switch old := old.(type) {
+				case []string:
+					params[k] = append(old, v)
+				case string:
+					params[k] = []string{old, v}
+				}
+			} else {
+				params[k] = v
+			}
+		})
+
+	default:
+		// 其他方法：默认解析 query
+		ctx.QueryArgs().VisitAll(func(key, value []byte) {
+			params[string(key)] = string(value)
 		})
 	}
-	if err = eg.Wait(); err != nil {
-		fastlog.Errorf("err:%v", err)
-		return err
-	}
 
-	return nil
+	// 转 JSON
+	return json.Marshal(params)
 }
 
-func GetGrpcClientOptions() []grpc.DialOption {
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+func makeRpcReq(paramsJson []byte, rpcMeta *RpcMetadata) (*dynamicpb.Message, error) {
+	msg := rpcMeta.reqPool.Get().(*dynamicpb.Message)
+
+	if paramsJson == nil {
+		return msg, nil
 	}
 
-	if len(cfg.GrpcClientOptions) > 0 {
-		opts = cfg.GrpcClientOptions
+	opt := protojson.UnmarshalOptions{
+		AllowPartial:   true,
+		DiscardUnknown: true,
 	}
 
-	return opts
+	err := opt.Unmarshal(paramsJson, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return msg, nil
 }
 
-func resolve(nodeHost string, nodePort int) error {
-	var (
-		conn *grpc.ClientConn
-		err  error
-	)
-	conn, err = grpc.NewClient(fmt.Sprintf("%s:%d", nodeHost, nodePort), GetGrpcClientOptions()...)
-	if err != nil {
-		fastlog.Errorf("err:%v", err)
-		return err
+type GatewayResp struct {
+	ErrCode int32       `json:"err_code"`
+	ErrMsg  string      `json:"err_msg"`
+	Data    interface{} `json:"data"`
+}
+
+type ResponseHttp struct {
+	Ctx          *fasthttp.RequestCtx
+	Err          error
+	GrpcResp     proto.Message
+	Method       string
+	Service      string
+	ReqHeader    map[string][]string
+	RespMetadata metadata.MD
+}
+
+func RespHttp(res *ResponseHttp) {
+	gatewayResp := &GatewayResp{}
+
+	if res.Err != nil {
+		if state, ok := status.FromError(res.Err); ok {
+			gatewayResp.ErrCode = int32(state.Code())
+			gatewayResp.ErrMsg = state.Message()
+		} else {
+			gatewayResp.ErrCode = -1
+			gatewayResp.ErrMsg = res.Err.Error()
+		}
 	}
 
-	cli := grpcreflect.NewClientAuto(context.Background(), conn)
-	rpcSvcs, err := cli.ListServices()
-	if err != nil {
-		cli.Reset()
-		return fmt.Errorf("failed to ListServices: %v", err)
-	}
-
-	for _, rpcSvc := range rpcSvcs {
-		rpcSvcDesc, err := cli.ResolveService(rpcSvc)
+	if res.GrpcResp != nil {
+		b, err := protojson.Marshal(res.GrpcResp)
 		if err != nil {
-			cli.Reset()
-			// try only once here
-			cli = grpcreflect.NewClientAuto(context.Background(), conn)
-			rpcSvcDesc, err = cli.ResolveService(rpcSvc)
-			if err != nil {
-				cli.Reset()
-				return err
-			}
+			fastlog.Errorf("err: %+v", err)
+			gatewayResp.ErrCode = -1
+			gatewayResp.ErrMsg = res.Err.Error()
+			return
 		}
 
-		methods := rpcSvcDesc.GetMethods()
-		svcName := rpcSvcDesc.GetName()
-		for _, method := range methods {
-			rpcMetadataMap.Store(fmt.Sprintf("%s.%s", rpcSvc, method.GetName()), &RpcMetadata{
-				svcFullyQualifiedName: rpcSvc,
-				svcName:               svcName,
-				method:                method,
-				invokeMethodName:      fmt.Sprintf("/%s/%s", rpcSvc, method.GetName()),
-				reqPool: &sync.Pool{
-					New: func() interface{} {
-						return dynamicpb.NewMessage(method.GetInputType().UnwrapMessage())
-					},
-				},
-				respPool: &sync.Pool{
-					New: func() interface{} {
-						return dynamicpb.NewMessage(method.GetOutputType().UnwrapMessage())
-					},
-				},
-			})
+		m := make(map[string]interface{})
+		if err = json.Unmarshal(b, &m); err != nil {
+			fastlog.Errorf("err: %+v", err)
+			gatewayResp.ErrCode = -1
+			gatewayResp.ErrMsg = res.Err.Error()
+			return
 		}
+
+		gatewayResp.Data = m
 	}
 
-	return nil
-}
-
-func WalkRpcMetadata(fn func(meta *RpcMetadata) bool) {
-	rpcMetadataMap.Range(func(key, value interface{}) bool {
-		return fn(value.(*RpcMetadata))
-	})
-}
-
-func GetRpcMetadata(packageName, svcName, method string) (*RpcMetadata, bool) {
-	rpcMeta, ok := rpcMetadataMap.Load(fmt.Sprintf("%s.%s.%s", packageName, svcName, method))
-	if !ok {
-		return nil, false
+	j, err := json.Marshal(gatewayResp)
+	if err != nil {
+		fastlog.Errorf("err:%v", err)
+		return
 	}
 
-	return rpcMeta.(*RpcMetadata), true
+	res.Ctx.Response.Header.SetContentType("application/json")
+
+	if _, err = fmt.Fprintf(res.Ctx, string(j)); err != nil {
+		fastlog.Errorf("err:%v", err)
+		return
+	}
+}
+
+func getGrpcCtx(cfg *Conf, header map[string][]string) (context.Context, context.CancelFunc) {
+	if cfg.CallClientTimeoutMs == 0 {
+		return metadata.NewOutgoingContext(context.Background(), header), func() {}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.CallClientTimeoutMs)*time.Millisecond)
+	return metadata.NewOutgoingContext(ctx, header), cancel
 }
