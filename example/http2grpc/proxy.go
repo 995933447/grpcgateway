@@ -25,7 +25,6 @@ func main() {
 		LogConf: grpcgateway.LogConf{
 			Log: logger.LogConf{
 				File: logger.FileLogConf{
-					MaxFileSizeBytes:            10000000,
 					LogInfoBeforeFileSizeBytes:  -1,
 					LogDebugBeforeFileSizeBytes: -1,
 					Level:                       "DBG",
