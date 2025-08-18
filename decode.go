@@ -29,7 +29,7 @@ func DecodePbFromJson(msg *dynamicpb.Message, v []byte) error {
 	return nil
 }
 
-// DecodePbFromURLValues FromURLValues url.Values → dynamicpb.Message
+// DecodePbFromURLValues FromURLValues url.Values → dynamicpb.Message 支持所有类型的参数
 func DecodePbFromURLValues(msg *dynamicpb.Message, values url.Values) error {
 	for key, vals := range values {
 		for _, v := range vals {
