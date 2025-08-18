@@ -286,7 +286,6 @@ func initRpcWatcher() error {
 	}
 	if err = eg.Wait(); err != nil {
 		fastlog.Errorf("err:%v", err)
-		return err
 	}
 
 	return nil
@@ -331,7 +330,7 @@ func resolve(nodeHost string, nodePort int) error {
 			rpcSvcDesc, err = cli.ResolveService(rpcSvc)
 			if err != nil {
 				cli.Reset()
-				return err
+				continue
 			}
 		}
 
