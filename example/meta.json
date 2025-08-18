@@ -1,0 +1,8 @@
+{
+  "env": "dev",
+  "discovery": "etcd",
+  "etcd": {
+    "connect_timeout_ms": 10000,
+    "endpoints": ["http://localhost:2379"]
+  }
+}
