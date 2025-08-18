@@ -14,11 +14,12 @@ import (
 func TestDecodePbFromURLValues(t *testing.T) {
 	// 构建 url.Values 模拟请求
 	values := url.Values{
-		"string_val":                        {"hello"},
-		"int32_val":                         {"123"},
-		"bool_val":                          {"true"},
-		"repeated_str[0]":                   {"first"},
-		"repeated_str[1]":                   {"second"},
+		"string_val":   {"hello"},
+		"int32_val":    {"123"},
+		"bool_val":     {"true"},
+		"repeated_str": {"first", "second"}, // 两种方式都ok
+		//"repeated_str[0]":                   {"first"}, // 两种方式都ok
+		//"repeated_str[1]":                   {"second"}, // 两种方式都ok
 		"map_val.key1":                      {"value1"},
 		"map_val.key2":                      {"value2"},
 		"nested_msg.nested_int":             {"42"},
@@ -56,4 +57,12 @@ func TestDecodePbFromURLValues(t *testing.T) {
 	}
 
 	t.Log(msg.Interface())
+
+	// 没问题 如何参数格式都解析成功
+	//	=== RUN   TestDecodePbFromURLValues
+	//	decode_test.go:56: decoded message not equal expected
+	//Got: string_val:"hello"  int32_val:123  bool_val:true  repeated_str:"first"  repeated_str:"second"  map_val:{key:"key1"  value:"value1"}  map_val:{key:"key2"  value:"value2"}  nested_msg:{nested_int:42}  repeated_nested_msg:{nested_int:66}  repeated_nested_msg:{nested_int:88}
+	//Want: string_val:"hello"  int32_val:123  bool_val:true  repeated_str:"first"  repeated_str:"second"  map_val:{key:"key1"  value:"value1"}  map_val:{key:"key2"  value:"value2"}  nested_msg:{nested_int:43}
+	//	decode_test.go:59: string_val:"hello"  int32_val:123  bool_val:true  repeated_str:"first"  repeated_str:"second"  map_val:{key:"key1"  value:"value1"}  map_val:{key:"key2"  value:"value2"}  nested_msg:{nested_int:42}  repeated_nested_msg:{nested_int:66}  repeated_nested_msg:{nested_int:88}
+	//	--- FAIL: TestDecodePbFromURLValues (0.00s)
 }
