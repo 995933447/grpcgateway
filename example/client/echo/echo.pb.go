@@ -72,6 +72,7 @@ type EchoReq struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Echo          string                 `protobuf:"bytes,1,opt,name=echo,proto3" json:"echo,omitempty"`
 	Remark        string                 `protobuf:"bytes,2,opt,name=remark,proto3" json:"remark,omitempty"`
+	Ts            int64                  `protobuf:"varint,3,opt,name=ts,proto3" json:"ts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -118,6 +119,13 @@ func (x *EchoReq) GetRemark() string {
 		return x.Remark
 	}
 	return ""
+}
+
+func (x *EchoReq) GetTs() int64 {
+	if x != nil {
+		return x.Ts
+	}
+	return 0
 }
 
 type EchoResp struct {
@@ -177,10 +185,11 @@ var File_echo_proto protoreflect.FileDescriptor
 const file_echo_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"echo.proto\x12\x04echo\x1a\text.proto\"5\n" +
+	"echo.proto\x12\x04echo\x1a\text.proto\"E\n" +
 	"\aEchoReq\x12\x12\n" +
 	"\x04echo\x18\x01 \x01(\tR\x04echo\x12\x16\n" +
-	"\x06remark\x18\x02 \x01(\tR\x06remark\".\n" +
+	"\x06remark\x18\x02 \x01(\tR\x06remark\x12\x0e\n" +
+	"\x02ts\x18\x03 \x01(\x03R\x02ts\".\n" +
 	"\bEchoResp\x12\x12\n" +
 	"\x04echo\x18\x01 \x01(\tR\x04echo\x12\x0e\n" +
 	"\x02ts\x18\x02 \x01(\x03R\x02ts* \n" +
