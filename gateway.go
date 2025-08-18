@@ -163,7 +163,7 @@ func InvokeGrpc(packageName, svcName, methodName string, paramsJson []byte, head
 		rpcMeta.reqPool.Put(req)
 	}()
 
-	conn, err := makeConn(packageName, svcName)
+	conn, err := makeRpcConn(packageName, svcName)
 	if err != nil {
 		fastlog.Errorf("err:%v", err)
 		return nil, nil, err
@@ -191,7 +191,7 @@ func InvokeGrpc(packageName, svcName, methodName string, paramsJson []byte, head
 	return resp, respHeader, err
 }
 
-func makeConn(packageName, svcName string) (*grpc.ClientConn, error) {
+func makeRpcConn(packageName, svcName string) (*grpc.ClientConn, error) {
 	target := fmt.Sprintf("%s:///%s.%s", cfg.GrpcResolveSchema, packageName, svcName)
 	grpcConnMu.RLock()
 	conn, ok := grpcConns[target]
