@@ -39,6 +39,8 @@ func HandleHttp(
 	resolveRpcParamsFunc ResolveRpcParamsFunc,
 	response func(res *ResponseHttp),
 ) error {
+	defer ClearGrpcConns()
+
 	err := fasthttp.ListenAndServe(fmt.Sprintf("%s:%d", host, port), func(ctx *fasthttp.RequestCtx) {
 		packageName, svcName, methodName, err := resolveRpcRouteFunc(ctx)
 		if err != nil {
