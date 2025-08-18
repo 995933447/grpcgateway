@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/95933447/grpcgateway/example/client/echo"
 	"github.com/995933447/microgosuit"
@@ -44,7 +45,9 @@ type EchoService struct {
 
 func (s *EchoService) BasicEcho(ctx context.Context, req *echo.EchoReq) (*echo.EchoResp, error) {
 	var resp echo.EchoResp
-	resp.Echo = req.Echo
+	time.Sleep(time.Second)
+	resp.Echo = req.Echo + req.Remark
+	resp.Ts = time.Now().Unix()
 	return &resp, nil
 }
 
