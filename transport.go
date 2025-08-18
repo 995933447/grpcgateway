@@ -2,7 +2,10 @@ package grpcgateway
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -30,7 +33,7 @@ func HandleHttpDefault(host string, port int) error {
 
 type ResolveRpcRouteFunc func(ctx *fasthttp.RequestCtx) (string, string, string, error)
 
-type ResolveRpcParamsFunc func(ctx *fasthttp.RequestCtx, method *desc.MethodDescriptor) ([]byte, map[string][]string, []grpc.CallOption, error)
+type ResolveRpcParamsFunc func(ctx *fasthttp.RequestCtx, method *desc.MethodDescriptor) (interface{}, map[string][]string, []grpc.CallOption, error)
 
 func HandleHttp(
 	host string,
@@ -66,7 +69,7 @@ func HandleHttp(
 
 		rpcMeta := rpcMetadataAny.(*RpcMetadata)
 
-		paramsJson, header, callOpts, err := resolveRpcParamsFunc(ctx, rpcMeta.method)
+		params, header, callOpts, err := resolveRpcParamsFunc(ctx, rpcMeta.method)
 		if err != nil {
 			response(&ResponseHttp{
 				Ctx:       ctx,
@@ -79,7 +82,7 @@ func HandleHttp(
 			return
 		}
 
-		resp, respHeader, err := InvokeGrpc(packageName, svcName, methodName, paramsJson, header, callOpts)
+		resp, respHeader, err := InvokeGrpc(packageName, svcName, methodName, params, header, callOpts)
 
 		defer func() {
 			if resp != nil {
@@ -138,7 +141,7 @@ func ResolveRpcRouteFromHttp(ctx *fasthttp.RequestCtx) (string, string, string, 
 	return packageName, svcName, methodName, nil
 }
 
-func ResolveRpcParamsFromHttp(ctx *fasthttp.RequestCtx, _ *desc.MethodDescriptor) ([]byte, map[string][]string, []grpc.CallOption, error) {
+func ResolveRpcParamsFromHttp(ctx *fasthttp.RequestCtx, _ *desc.MethodDescriptor) (interface{}, map[string][]string, []grpc.CallOption, error) {
 	header := make(map[string][]string)
 	ctx.Request.Header.VisitAll(func(key, value []byte) {
 		k := strings.ToLower(string(key))
@@ -149,85 +152,77 @@ func ResolveRpcParamsFromHttp(ctx *fasthttp.RequestCtx, _ *desc.MethodDescriptor
 		header[k] = []string{string(value)}
 	})
 
-	j, err := HttpParamsToJson(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	return j, header, nil, nil
+	return HttpPramsToJsonOrUrlValues(ctx), header, nil, nil
 }
 
-func HttpParamsToJson(ctx *fasthttp.RequestCtx) ([]byte, error) {
-	params := make(map[string]any)
-
+func HttpPramsToJsonOrUrlValues(ctx *fasthttp.RequestCtx) interface{} {
 	switch string(ctx.Method()) {
-	case fasthttp.MethodGet, fasthttp.MethodDelete:
-		// GET/DELETE → query string
-		ctx.QueryArgs().VisitAll(func(key, value []byte) {
-			k := string(key)
-			v := string(value)
-			if old, ok := params[k]; ok {
-				// 如果已有值，转成 slice
-				switch old := old.(type) {
-				case []string:
-					params[k] = append(old, v)
-				case string:
-					params[k] = []string{old, v}
-				}
-			} else {
-				params[k] = v
-			}
-		})
-
 	case fasthttp.MethodPost, fasthttp.MethodPut, fasthttp.MethodPatch:
 		// POST/PUT/PATCH → 尝试 JSON，否则解析 form
 		contentType := string(ctx.Request.Header.ContentType())
 		if contentType == "application/json" {
 			// 直接返回 body
-			return ctx.PostBody(), nil
+			return ctx.PostBody()
 		}
-		// 处理 x-www-form-urlencoded / multipart
-		ctx.PostArgs().VisitAll(func(key, value []byte) {
-			k := string(key)
-			v := string(value)
-			if old, ok := params[k]; ok {
-				switch old := old.(type) {
-				case []string:
-					params[k] = append(old, v)
-				case string:
-					params[k] = []string{old, v}
-				}
-			} else {
-				params[k] = v
-			}
-		})
-
-	default:
-		// 其他方法：默认解析 query
-		ctx.QueryArgs().VisitAll(func(key, value []byte) {
-			params[string(key)] = string(value)
-		})
 	}
 
-	// 转 JSON
-	return json.Marshal(params)
+	values := url.Values{}
+
+	// 1. GET/DELETE 查询参数（URL query）
+	ctx.QueryArgs().VisitAll(func(key, value []byte) {
+		values.Add(string(key), string(value))
+	})
+
+	// 2. POST/PUT/PATCH 表单参数（application/x-www-form-urlencoded）
+	ctx.PostArgs().VisitAll(func(key, value []byte) {
+		values.Add(string(key), string(value))
+	})
+
+	// 3. multipart/form-data
+	if form, err := ctx.MultipartForm(); err == nil && form != nil {
+		// 文本字段
+		for key, vals := range form.Value {
+			for _, v := range vals {
+				values.Add(key, v)
+			}
+		}
+		// 文件字段：转 base64
+		for key, fileHeaders := range form.File {
+			for _, fh := range fileHeaders {
+				f, err := fh.Open()
+				if err != nil {
+					continue
+				}
+				data, err := io.ReadAll(f)
+				f.Close()
+				if err != nil {
+					continue
+				}
+				encoded := base64.StdEncoding.EncodeToString(data)
+				values.Add(key, encoded)
+			}
+		}
+	}
+
+	return values
 }
 
-func makeRpcReq(paramsJson []byte, rpcMeta *RpcMetadata) (*dynamicpb.Message, error) {
+func makeRpcReq(params interface{}, rpcMeta *RpcMetadata) (*dynamicpb.Message, error) {
 	msg := rpcMeta.reqPool.Get().(*dynamicpb.Message)
 
-	if paramsJson == nil {
+	if params == nil {
 		return msg, nil
 	}
 
-	opt := protojson.UnmarshalOptions{
-		AllowPartial:   true,
-		DiscardUnknown: true,
-	}
-
-	err := opt.Unmarshal(paramsJson, msg)
-	if err != nil {
-		return nil, err
+	switch v := params.(type) {
+	case []byte:
+		if err := DecodePbFromJson(msg, v); err != nil {
+			return nil, err
+		}
+	case url.Values:
+		if err := DecodePbFromURLValues(msg, v); err != nil {
+			return nil, err
+		}
 	}
 
 	return msg, nil
