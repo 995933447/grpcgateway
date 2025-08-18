@@ -9,4 +9,4 @@
 - **易用**：支持各类http请求格式转发到grpc服务，包括JSON,url query,x-www-form-urlencoded等，支持转发http request header和grpc response header。
 - **服务发现**：基于发现自动发现新增和删除的grpc服务，无须重启。
 - **热更新protobuf**: 基于grpc反射服务实现，无须重启自动检测和动态更新grpc protobuf。
-- **组合式**：提供各种组合式api轻松实现各种业务系统合适的网关服务，如鉴权，流量过滤等。
+- **组合和插拔式**：提供各种组合和插拔式api轻松实现各种业务系统合适的网关服务，如鉴权，流量过滤，自定义参数解析和响应格式等。
