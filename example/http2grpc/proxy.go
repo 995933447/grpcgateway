@@ -39,9 +39,9 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("running http2grpc-gateway.... listening at:127.0.0.1:8000")
+	fmt.Println("running http2grpc-gateway.... listening at:127.0.0.1:8001")
 
-	err = grpcgateway.HandleHttp("127.0.0.1", 8000, grpcgateway.ResolveRpcRouteFromHttp, func(ctx *fasthttp.RequestCtx, method *desc.MethodDescriptor) ([]byte, map[string][]string, []grpc.CallOption, error) {
+	err = grpcgateway.HandleHttp("127.0.0.1", 8001, grpcgateway.ResolveRpcRouteFromHttp, func(ctx *fasthttp.RequestCtx, method *desc.MethodDescriptor) (interface{}, map[string][]string, []grpc.CallOption, error) {
 		if !proto.HasExtension(method.GetMethodOptions(), ext.E_HttpProxyAccessRule) {
 			return nil, nil, nil, grpcgateway.ErrNotSupportHttpAccess
 		}
