@@ -47,7 +47,10 @@ func (s *EchoService) BasicEcho(ctx context.Context, req *echo.EchoReq) (*echo.E
 	var resp echo.EchoResp
 	time.Sleep(time.Second)
 	resp.Echo = req.Echo + req.Remark
-	resp.Ts = time.Now().Unix()
+	resp.Ts = req.Ts
+	if resp.Ts == 0 {
+		resp.Ts = time.Now().Unix()
+	}
 	return &resp, nil
 }
 
