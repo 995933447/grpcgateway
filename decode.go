@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-// DecodePbFromJson FromURLValues json → dynamicpb.Message
+// DecodePbFromJson json → dynamicpb.Message 
 func DecodePbFromJson(msg *dynamicpb.Message, v []byte) error {
 	opt := protojson.UnmarshalOptions{
 		AllowPartial:   true,
@@ -29,7 +29,7 @@ func DecodePbFromJson(msg *dynamicpb.Message, v []byte) error {
 	return nil
 }
 
-// DecodePbFromURLValues FromURLValues url.Values → dynamicpb.Message 支持所有类型的参数
+// DecodePbFromURLValues FromURLValues url.Values → dynamicpb.Message 已完成支持所有类型的参数
 func DecodePbFromURLValues(msg *dynamicpb.Message, values url.Values) error {
 	for key, vals := range values {
 		for _, v := range vals {
