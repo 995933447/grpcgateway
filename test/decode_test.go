@@ -16,13 +16,17 @@ import (
 
 func TestDecodePbFromURLValues(t *testing.T) {
 	// 构建 url.Values 模拟请求
+	// 数组用#1 或者 #2 形式表示都可以，但是不能同时存在，选其中一种形式即可，否则会出现意料不到的效果。
+	// 比如这个例子，因为values是无序的，如果先写入key repeated_str[2]部分，repeat_str字段值为: []string{"", "", "third"},
+	// 然后写入repeated_str部分，repeat_str字段值为: []string{"", "", "third", "first", "second"},
+	// 最后写入key repeated_str[3]部分，repeat_str字段值为: []string{"", "", "third", "4th", "second"}, 所以可能导致first丢失
 	values := url.Values{
-		"string_val":   {"hello"},
-		"int32_val":    {"123"},
-		"bool_val":     {"true"},
-		"repeated_str": {"first", "second"}, // 两种方式都ok
-		//"repeated_str[0]":                   {"first"}, // 两种方式都ok
-		//"repeated_str[1]":                   {"second"}, // 两种方式都ok
+		"string_val":                        {"hello"},
+		"int32_val":                         {"123"},
+		"bool_val":                          {"true"},
+		"repeated_str":                      {"first", "second"}, // 两种方式都ok #1
+		"repeated_str[2]":                   {"third"},           // 两种方式都ok #2
+		"repeated_str[3]":                   {"4th"},             // 两种方式都ok #2
 		"map_val.key1":                      {"value1"},
 		"map_val.key2":                      {"value2"},
 		"nested_msg.nested_int":             {"42"},
