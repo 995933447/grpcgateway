@@ -16,4 +16,6 @@ message TestMessage {
   map<string, string> map_val = 5;
   NestedMessage nested_msg = 6;
   repeated NestedMessage repeated_nested_msg  = 7;
+  bytes file_content = 8;
+  repeated bytes repeated_file = 9;
 }
