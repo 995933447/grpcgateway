@@ -1,6 +1,9 @@
 package test
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
 	"net/url"
 	"testing"
 
@@ -27,11 +30,24 @@ func TestDecodePbFromURLValues(t *testing.T) {
 		"repeated_nested_msg[1].nested_int": {"88"},
 	}
 
+	// 创建一个长度为 20 的字节切片
+	b := make([]byte, 20)
+
+	// 使用 rand.Read 填充随机字节
+	_, err := rand.Read(b)
+
+	bbase64 := base64.StdEncoding.EncodeToString(b)
+
+	fmt.Println(b)
+	fmt.Println(bbase64)
+
+	values.Add("file_content", bbase64)
+
 	// 创建 dynamicpb.Message
 	msg := dynamicpb.NewMessage((&testdecode.TestMessage{}).ProtoReflect().Descriptor())
 
 	// 调用 DecodePbFromURLValues
-	err := grpcgateway.DecodePbFromURLValues(msg, values)
+	err = grpcgateway.DecodePbFromURLValues(msg, values)
 	if err != nil {
 		t.Fatalf("DecodePbFromURLValues failed: %v", err)
 	}
@@ -49,6 +65,7 @@ func TestDecodePbFromURLValues(t *testing.T) {
 		NestedMsg: &testdecode.NestedMessage{
 			NestedInt: 43,
 		},
+		FileContent: b,
 	}
 
 	// 转为 proto.Message 进行比较
