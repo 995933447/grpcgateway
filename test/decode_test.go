@@ -42,6 +42,8 @@ func TestDecodePbFromURLValues(t *testing.T) {
 	fmt.Println(bbase64)
 
 	values.Add("file_content", bbase64)
+	values.Add("repeated_file", bbase64)
+	values.Add("repeated_file", bbase64)
 
 	// 创建 dynamicpb.Message
 	msg := dynamicpb.NewMessage((&testdecode.TestMessage{}).ProtoReflect().Descriptor())
