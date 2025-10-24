@@ -368,10 +368,14 @@ func ClearGrpcConns() {
 	rpcConns = make(map[string]*grpc.ClientConn)
 }
 
-func WalkRpcMetadata(fn func(meta *RpcMetadata) bool) {
+func WalkRpcMetadata(fn func(key string, meta *RpcMetadata) bool) {
 	rpcMetadataMap.Range(func(key, value interface{}) bool {
-		return fn(value.(*RpcMetadata))
+		return fn(key.(string), value.(*RpcMetadata))
 	})
+}
+
+func DeleteRpcMetadata(key string) {
+	rpcMetadataMap.Delete(key)
 }
 
 func GetRpcMetadata(packageName, svcName, method string) (*RpcMetadata, bool) {
