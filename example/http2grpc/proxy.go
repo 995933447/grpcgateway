@@ -5,7 +5,6 @@ import (
 
 	"github.com/95933447/grpcgateway"
 	"github.com/95933447/grpcgateway/example/client/ext"
-	"github.com/995933447/fastlog/logger"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/valyala/fasthttp"
 	"google.golang.org/grpc"
@@ -21,18 +20,6 @@ func main() {
 				MicroGoSuitMetadataConfFilePath: "../meta.json",
 			},
 			GrpcResolveSchema: "testschema",
-		},
-		LogConf: grpcgateway.LogConf{
-			Log: logger.LogConf{
-				File: logger.FileLogConf{
-					LogInfoBeforeFileSizeBytes:  -1,
-					LogDebugBeforeFileSizeBytes: -1,
-					Level:                       "DBG",
-					DefaultLogDir:               "/var/work/logs/grpcgateway/example/echo/log",
-					BillLogDir:                  "/var/work/logs/grpcgateway/example/echo/bill",
-					StatLogDir:                  "/var/work/logs/grpcgateway/example/echo/stat",
-				},
-			},
 		},
 	})
 	if err != nil {
