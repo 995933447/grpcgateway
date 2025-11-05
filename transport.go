@@ -71,11 +71,11 @@ func HandleHttp(
 		params, header, callOpts, err := resolveRpcParamsFunc(ctx, rpcMeta.method)
 		if err != nil {
 			response(&ResponseHttp{
-				Ctx:          ctx,
-				Err:          err,
-				Service:      svcName,
-				Method:       methodName,
-				RespMetadata: header,
+				Ctx:       ctx,
+				Err:       err,
+				Service:   svcName,
+				Method:    methodName,
+				ReqHeader: header,
 			})
 
 			return
@@ -283,8 +283,10 @@ func RespHttp(res *ResponseHttp) {
 	}
 
 	res.Ctx.Response.Header.SetContentType("application/json")
-	for k, v := range res.RespMetadata {
-		res.Ctx.Response.Header.Set(k, strings.Join(v, ","))
+	if res.RespMetadata != nil {
+		for k, v := range res.RespMetadata {
+			res.Ctx.Response.Header.Set(k, strings.Join(v, ","))
+		}
 	}
 
 	if _, err = fmt.Fprintf(res.Ctx, string(j)); err != nil {
