@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/995933447/fastlog"
 	"github.com/995933447/stringhelper-go"
 	"github.com/jhump/protoreflect/desc"
 	json "github.com/json-iterator/go"
@@ -25,7 +24,7 @@ import (
 func HandleHttpDefault(host string, port int) error {
 	err := HandleHttp(host, port, ResolveRpcRouteFromHttp, ResolveRpcParamsFromHttp, RespHttp)
 	if err != nil {
-		fastlog.Errorf("err: %+v", err)
+		logger.Errorf("err: %+v", err)
 		return err
 	}
 	return nil
@@ -72,11 +71,11 @@ func HandleHttp(
 		params, header, callOpts, err := resolveRpcParamsFunc(ctx, rpcMeta.method)
 		if err != nil {
 			response(&ResponseHttp{
-				Ctx:       ctx,
-				Err:       err,
-				Service:   svcName,
-				Method:    methodName,
-				ReqHeader: header,
+				Ctx:          ctx,
+				Err:          err,
+				Service:      svcName,
+				Method:       methodName,
+				RespMetadata: header,
 			})
 
 			return
@@ -109,7 +108,7 @@ func HandleHttp(
 		return
 	})
 	if err != nil {
-		fastlog.Errorf("err: %+v", err)
+		logger.Errorf("err: %+v", err)
 		return err
 	}
 	return nil
@@ -260,7 +259,7 @@ func RespHttp(res *ResponseHttp) {
 	if res.GrpcResp != nil {
 		b, err := protojson.Marshal(res.GrpcResp)
 		if err != nil {
-			fastlog.Errorf("err: %+v", err)
+			logger.Errorf("err: %+v", err)
 			gatewayResp.ErrCode = -1
 			gatewayResp.ErrMsg = res.Err.Error()
 			return
@@ -268,7 +267,7 @@ func RespHttp(res *ResponseHttp) {
 
 		m := make(map[string]interface{})
 		if err = json.Unmarshal(b, &m); err != nil {
-			fastlog.Errorf("err: %+v", err)
+			logger.Errorf("err: %+v", err)
 			gatewayResp.ErrCode = -1
 			gatewayResp.ErrMsg = res.Err.Error()
 			return
@@ -279,14 +278,17 @@ func RespHttp(res *ResponseHttp) {
 
 	j, err := json.Marshal(gatewayResp)
 	if err != nil {
-		fastlog.Errorf("err:%v", err)
+		logger.Errorf("err:%v", err)
 		return
 	}
 
 	res.Ctx.Response.Header.SetContentType("application/json")
+	for k, v := range res.RespMetadata {
+		res.Ctx.Response.Header.Set(k, strings.Join(v, ","))
+	}
 
 	if _, err = fmt.Fprintf(res.Ctx, string(j)); err != nil {
-		fastlog.Errorf("err:%v", err)
+		logger.Errorf("err:%v", err)
 		return
 	}
 }

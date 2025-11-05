@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/995933447/fastlog"
-	"github.com/995933447/fastlog/logger"
+	fastlogger "github.com/995933447/fastlog/logger"
 	"github.com/995933447/fastlog/logger/writer"
 	"github.com/995933447/microgosuit"
 	"github.com/995933447/microgosuit/discovery"
@@ -55,7 +54,6 @@ func (r *RpcMetadata) GetInvokeMethodName() string {
 type Conf struct {
 	ServiceName string
 	GrpcConf
-	LogConf
 }
 
 type GrpcConf struct {
@@ -73,7 +71,7 @@ type MicroGoSuitConf struct {
 }
 
 type LogConf struct {
-	Log          logger.LogConf
+	Log          fastlogger.LogConf
 	LogAlertFunc writer.AlertFunc
 }
 
@@ -85,10 +83,6 @@ func Init(c *Conf) error {
 	}
 
 	cfg = c
-
-	if err := initLog(); err != nil {
-		return err
-	}
 
 	if err := initGrpcResolver(); err != nil {
 		return err
@@ -131,7 +125,7 @@ func initGrpcResolver() error {
 
 	err := microgosuit.InitSuitWithGrpc(context.TODO(), cfg.MicroGoSuitMetadataConfFilePath, cfg.GrpcResolveSchema, cfg.MicroGoSuitDiscoverPrefix)
 	if err != nil {
-		fastlog.Errorf("grpc resolver init err: %v", err)
+		logger.Errorf("grpc resolver init err: %v", err)
 		return err
 	}
 
@@ -165,7 +159,7 @@ func InvokeGrpc(packageName, svcName, methodName string, params interface{}, hea
 
 	conn, err := makeRpcConn(packageName, svcName)
 	if err != nil {
-		fastlog.Errorf("err:%v", err)
+		logger.Errorf("err:%v", err)
 		return nil, nil, err
 	}
 
@@ -204,7 +198,7 @@ func makeRpcConn(packageName, svcName string) (*grpc.ClientConn, error) {
 			var err error
 			conn, err = grpc.NewClient(fmt.Sprintf("%s:///%s.%s", cfg.GrpcResolveSchema, packageName, svcName), GetGrpcClientOptions()...)
 			if err != nil {
-				fastlog.Errorf("err:%v", err)
+				logger.Errorf("err:%v", err)
 				return nil, err
 			}
 
@@ -213,20 +207,6 @@ func makeRpcConn(packageName, svcName string) (*grpc.ClientConn, error) {
 	}
 
 	return conn, nil
-}
-
-func initLog() error {
-	fastlog.SetModuleName(cfg.ServiceName)
-
-	if err := fastlog.InitDefaultCfgLoader("", &cfg.Log); err != nil {
-		return err
-	}
-
-	if err := fastlog.InitDefaultLogger(cfg.LogAlertFunc); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func initRpcWatcher() error {
@@ -244,7 +224,7 @@ func initRpcWatcher() error {
 		case discovery.EvtUpdated:
 			leastNode := svc.Nodes[len(svc.Nodes)-1]
 			if err = resolve(leastNode.Host, leastNode.Port); err != nil {
-				fastlog.Errorf("err:%v", err)
+				logger.Errorf("err:%v", err)
 			}
 		case discovery.EvtDeleted:
 			var rmKeys []string
@@ -263,7 +243,7 @@ func initRpcWatcher() error {
 
 	svcs, err := disc.LoadAll(context.TODO())
 	if err != nil {
-		fastlog.Errorf("err:%v", err)
+		logger.Errorf("err:%v", err)
 		return err
 	}
 
@@ -278,14 +258,14 @@ func initRpcWatcher() error {
 		leastNode := node
 		eg.Go(func() error {
 			if err = resolve(leastNode.Host, leastNode.Port); err != nil {
-				fastlog.Errorf("err:%v", err)
+				logger.Errorf("err:%v", err)
 				return err
 			}
 			return nil
 		})
 	}
 	if err = eg.Wait(); err != nil {
-		fastlog.Errorf("err:%v", err)
+		logger.Errorf("err:%v", err)
 	}
 
 	return nil
@@ -310,7 +290,7 @@ func resolve(nodeHost string, nodePort int) error {
 	)
 	conn, err = grpc.NewClient(fmt.Sprintf("%s:%d", nodeHost, nodePort), GetGrpcClientOptions()...)
 	if err != nil {
-		fastlog.Errorf("err:%v", err)
+		logger.Errorf("err:%v", err)
 		return err
 	}
 
