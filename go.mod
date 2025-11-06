@@ -5,7 +5,7 @@ go 1.24.5
 require (
 	github.com/995933447/fastlog v0.0.0-20250813132140-e211c9fa7629
 	github.com/995933447/microgosuit v0.0.0-20250618135656-01aa8c457f1b
-	github.com/995933447/runtimeutil v0.0.0-20250813071648-4300850bdc31
+	github.com/995933447/runtimeutil v0.0.0-20251031051925-c28334a3fb45
 	github.com/995933447/stringhelper-go v0.0.0-20250816125320-1bdea3d708d0
 	github.com/jhump/protoreflect v1.17.0
 	github.com/json-iterator/go v1.1.12
@@ -15,7 +15,6 @@ require (
 )
 
 require (
-	git.888.fun/backend/afun-golang-pkg v1.6.7 // indirect
 	github.com/995933447/confloader v0.0.0-20230314141707-e7b191386ae2 // indirect
 	github.com/995933447/elemutil v0.0.0-20230419031952-50d9019c3314 // indirect
 	github.com/995933447/gofiler v0.0.0-20250611152943-58698ea59433 // indirect
@@ -34,7 +33,7 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
-	github.com/petermattis/goid v0.0.0-20250813065127-a731cc31b4fe // indirect
+	github.com/petermattis/goid v0.0.0-20250904145737-900bdf8bb490 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.10 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.4 // indirect
@@ -42,7 +41,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	google.golang.org/genproto v0.0.0-20231106174013-bbf56f31fb17 // indirect
