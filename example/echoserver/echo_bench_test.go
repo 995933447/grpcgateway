@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/95933447/grpcgateway/example/client/echo"
+	"github.com/995933447/grpcgateway/example/client/echo"
 	"google.golang.org/grpc"
 )
 

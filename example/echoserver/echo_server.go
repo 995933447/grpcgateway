@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/95933447/grpcgateway/example/client/echo"
+	"github.com/995933447/grpcgateway/example/client/echo"
 	"github.com/995933447/microgosuit"
 	"github.com/995933447/microgosuit/discovery"
 	"github.com/995933447/microgosuit/grpcsuit"
