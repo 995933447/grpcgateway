@@ -81,7 +81,8 @@ func HandleHttp(
 			return
 		}
 
-		resp, respHeader, err := InvokeGrpc(packageName, svcName, methodName, params, header, callOpts)
+		//resp, respHeader, err := InvokeGrpc(packageName, svcName, methodName, params, header, callOpts)
+		respHeader, resp, _, _, err := InvokeGrpcSupportStreamV2(packageName, svcName, methodName, params, nil, header, callOpts)
 
 		defer func() {
 			if resp != nil {

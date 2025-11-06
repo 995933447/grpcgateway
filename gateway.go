@@ -3,6 +3,7 @@ package grpcgateway
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
 	fastlogger "github.com/995933447/fastlog/logger"
@@ -11,7 +12,9 @@ import (
 	"github.com/995933447/microgosuit/discovery"
 	"github.com/995933447/microgosuit/factory"
 	"github.com/995933447/runtimeutil"
+	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
+	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
 	"github.com/jhump/protoreflect/grpcreflect"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -130,6 +133,358 @@ func initGrpcResolver() error {
 	}
 
 	return nil
+}
+
+// InvokeGrpcSupportStream grpcdynamic包实现版本
+func InvokeGrpcSupportStream(packageName, svcName, methodName string, params interface{}, paramsCh chan interface{}, header map[string][]string, callOpts []grpc.CallOption) (metadata.MD, proto.Message, chan proto.Message, chan error, error) {
+	rpcMetadataAny, ok := rpcMetadataMap.Load(fmt.Sprintf("%s.%s.%s", packageName, svcName, methodName))
+	if !ok {
+		return nil, nil, nil, nil, ErrServiceNotFound
+	}
+
+	rpcMeta := rpcMetadataAny.(*RpcMetadata)
+
+	// context
+	c, cancel := getGrpcCtx(cfg, header)
+
+	conn, err := makeRpcConn(packageName, svcName)
+	if err != nil {
+		cancel()
+		logger.Errorf("err:%v", err)
+		return nil, nil, nil, nil, err
+	}
+
+	stub := grpcdynamic.NewStub(conn)
+
+	switch {
+	case rpcMeta.method.IsClientStreaming() && rpcMeta.method.IsServerStreaming(): // bidi
+		respCh := make(chan proto.Message)
+		errCh := make(chan error)
+
+		stream, err := stub.InvokeRpcBidiStream(c, rpcMeta.method, callOpts...)
+		if err != nil {
+			cancel()
+			return nil, nil, nil, nil, err
+		}
+
+		respHeader, _ := stream.Header()
+
+		// 发送 goroutine
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+
+			if paramsCh != nil {
+				for m := range paramsCh {
+					req, err := makeRpcReq(m, rpcMeta)
+					if err != nil {
+						errCh <- err
+						continue
+					}
+
+					if err := stream.SendMsg(req); err != nil {
+						errCh <- err
+						continue
+					}
+
+					req.Reset()
+					rpcMeta.reqPool.Put(req)
+				}
+			}
+
+			err = stream.CloseSend()
+			if err != nil {
+				logger.Errorf("err:%v", err)
+				errCh <- err
+			}
+		}()
+
+		// 接收 goroutine（不要 close 外部 respCh，这里决定由调用者负责）
+		go func() {
+			defer wg.Done()
+
+			for {
+				m, err := stream.RecvMsg()
+				if err == io.EOF {
+					// 正常结束，返回
+					return
+				}
+
+				if err != nil {
+					errCh <- err
+					continue
+				}
+
+				// 将收到的 proto.Message 发给 caller 提供的通道
+				respCh <- m
+			}
+		}()
+
+		go func() {
+			wg.Wait()
+			cancel()
+			close(respCh)
+			close(errCh)
+		}()
+
+		return respHeader, nil, respCh, errCh, nil
+	case rpcMeta.method.IsServerStreaming():
+		respCh := make(chan proto.Message)
+		errCh := make(chan error)
+
+		// 对于 server streaming，grpc.Header call option 对流不可用，应该在 stream 上调用 Header()
+		req, err := makeRpcReq(params, rpcMeta)
+		if err != nil {
+			cancel()
+			return nil, nil, nil, nil, err
+		}
+
+		defer func() {
+			req.Reset()
+			rpcMeta.reqPool.Put(req)
+		}()
+
+		stream, err := stub.InvokeRpcServerStream(c, rpcMeta.method, req, callOpts...)
+		if err != nil {
+			cancel()
+			return nil, nil, nil, nil, err
+		}
+
+		// 在接收第一个消息之前或之后，你可以调用 stream.Header() 获取 header（如果服务端发了）
+		respHeader, _ := stream.Header()
+
+		go func() {
+			defer func() {
+				cancel()
+				close(respCh)
+				close(errCh)
+			}()
+
+			for {
+				m, err := stream.RecvMsg()
+				if err == io.EOF {
+					// 正常结束
+					break
+				}
+
+				if err != nil {
+					errCh <- err
+					continue
+				}
+
+				respCh <- m
+			}
+		}()
+
+		return respHeader, nil, respCh, errCh, nil
+	case rpcMeta.method.IsClientStreaming():
+		stream, err := stub.InvokeRpcClientStream(c, rpcMeta.method, callOpts...)
+		if err != nil {
+			cancel()
+			return nil, nil, nil, nil, err
+		}
+
+		respHeader, _ := stream.Header()
+
+		errCh := make(chan error)
+		respCh := make(chan proto.Message)
+		go func() {
+			defer cancel()
+
+			if paramsCh != nil {
+				// 发送所有请求，使用 range 避免重复 close
+				for m := range paramsCh {
+					req, err := makeRpcReq(m, rpcMeta)
+					if err != nil {
+						errCh <- err
+						continue
+					}
+
+					if err := stream.SendMsg(req); err != nil {
+						errCh <- err
+						continue
+					}
+
+					req.Reset()
+					rpcMeta.reqPool.Put(req)
+				}
+			}
+
+			// 发送完成，关闭发送并接收单一响应
+			resp, err := stream.CloseAndReceive()
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			respCh <- resp
+		}()
+
+		return respHeader, nil, respCh, errCh, nil
+	default:
+		defer cancel()
+
+		// 只有 unary 情况我们才能添加 HeaderCallOption
+		respHeader := metadata.New(make(map[string]string))
+		var existsRespHeader bool
+		for _, opt := range callOpts {
+			switch opt.(type) {
+			case grpc.HeaderCallOption:
+				respHeader = *opt.(grpc.HeaderCallOption).HeaderAddr
+				existsRespHeader = true
+			}
+			if existsRespHeader {
+				break
+			}
+		}
+		if !existsRespHeader {
+			callOpts = append(callOpts, grpc.Header(&respHeader))
+		}
+
+		req, err := makeRpcReq(params, rpcMeta)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+
+		defer func() {
+			req.Reset()
+			rpcMeta.reqPool.Put(req)
+		}()
+
+		resp, err := stub.InvokeRpc(c, rpcMeta.method, req, callOpts...)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+
+		return respHeader, resp, nil, nil, nil
+	}
+}
+
+// InvokeGrpcSupportStreamV2 原生grpc实现版本
+func InvokeGrpcSupportStreamV2(packageName, svcName, methodName string, params interface{}, paramsCh chan interface{}, header map[string][]string, callOpts []grpc.CallOption) (metadata.MD, *dynamicpb.Message, chan *dynamicpb.Message, chan error, error) {
+	rpcMetadataAny, ok := rpcMetadataMap.Load(fmt.Sprintf("%s.%s.%s", packageName, svcName, methodName))
+	if !ok {
+		return nil, nil, nil, nil, ErrServiceNotFound
+	}
+
+	rpcMeta := rpcMetadataAny.(*RpcMetadata)
+
+	desc := &grpc.StreamDesc{
+		StreamName:    rpcMeta.invokeMethodName,
+		ServerStreams: rpcMeta.method.IsServerStreaming(),
+		ClientStreams: rpcMeta.method.IsClientStreaming(),
+	}
+
+	// context
+	c, cancel := getGrpcCtx(cfg, header)
+
+	conn, err := makeRpcConn(packageName, svcName)
+	if err != nil {
+		cancel()
+		return nil, nil, nil, nil, err
+	}
+
+	respHeader := metadata.New(make(map[string]string))
+	if !rpcMeta.method.IsClientStreaming() && !rpcMeta.method.IsServerStreaming() {
+		var existsRespHeader bool
+		for _, opt := range callOpts {
+			switch opt.(type) {
+			case grpc.HeaderCallOption:
+				respHeader = *opt.(grpc.HeaderCallOption).HeaderAddr
+				existsRespHeader = true
+			}
+			if existsRespHeader {
+				break
+			}
+		}
+		if !existsRespHeader {
+			callOpts = append(callOpts, grpc.Header(&respHeader))
+		}
+	}
+
+	stream, err := conn.NewStream(c, desc, rpcMeta.invokeMethodName, callOpts...)
+	if err != nil {
+		cancel()
+		return respHeader, nil, nil, nil, err
+	}
+
+	respCh := make(chan *dynamicpb.Message)
+	errCh := make(chan error)
+	// 如果是客户端流或双向流 -> 可以多次发送
+	if rpcMeta.method.IsClientStreaming() {
+		respHeader, err = stream.Header()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+
+		go func() {
+			if paramsCh != nil {
+				for r := range paramsCh {
+					req, err := makeRpcReq(r, rpcMeta)
+					if err != nil {
+						errCh <- err
+						continue
+					}
+
+					if err := stream.SendMsg(req); err != nil {
+						errCh <- err
+					}
+
+					req.Reset()
+					rpcMeta.reqPool.Put(req)
+				}
+			}
+
+			if err = stream.CloseSend(); err != nil {
+				errCh <- err
+			}
+		}()
+	} else {
+		defer func() {
+			err = stream.CloseSend()
+			cancel()
+		}()
+
+		req, err := makeRpcReq(params, rpcMeta)
+		if err != nil {
+			return respHeader, nil, nil, nil, err
+		}
+
+		if err := stream.SendMsg(req); err != nil {
+			return respHeader, nil, nil, nil, err
+		}
+
+		resp := rpcMeta.respPool.Get().(*dynamicpb.Message)
+		err = stream.RecvMsg(resp)
+		if err != nil {
+			return respHeader, resp, nil, nil, err
+		}
+
+		return respHeader, resp, nil, nil, nil
+	}
+
+	go func() {
+		defer func() {
+			cancel()
+			close(respCh)
+			close(errCh)
+		}()
+		for {
+			resp := rpcMeta.respPool.Get().(*dynamicpb.Message)
+			err := stream.RecvMsg(resp)
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				errCh <- err
+				continue
+			}
+			respCh <- resp
+		}
+	}()
+
+	return respHeader, nil, respCh, errCh, nil
 }
 
 func InvokeGrpc(packageName, svcName, methodName string, params interface{}, header map[string][]string, callOpts []grpc.CallOption) (*dynamicpb.Message, metadata.MD, error) {
