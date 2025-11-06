@@ -7,7 +7,7 @@
 package echo
 
 import (
-	_ "github.com/95933447/grpcgateway/example/client/ext"
+	_ "github.com/995933447/grpcgateway/example/client/ext"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
