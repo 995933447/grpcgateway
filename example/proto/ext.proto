@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package ext;
-option go_package = "github.com/95933447/grpcgateway/example/client/ext;ext";
+option go_package = "github.com/995933447/grpcgateway/example/client/ext;ext";
 
 import "google/protobuf/descriptor.proto";
 
