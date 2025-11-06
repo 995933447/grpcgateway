@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/95933447/grpcgateway"
-	"github.com/95933447/grpcgateway/test/client/testdecode"
+	"github.com/995933447/grpcgateway"
+	"github.com/995933447/grpcgateway/test/client/testdecode"
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"google.golang.org/protobuf/proto"
