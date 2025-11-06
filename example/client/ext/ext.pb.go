@@ -99,7 +99,7 @@ const file_ext_proto_rawDesc = "" +
 	"\x13HttpProxyAccessRule\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x16\n" +
 	"\x06NoAuth\x18\x02 \x01(\bR\x06NoAuth:o\n" +
-	"\x16http_proxy_access_rule\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\v2\x18.ext.HttpProxyAccessRuleR\x13httpProxyAccessRuleB8Z6github.com/95933447/grpcgateway/example/client/ext;extb\x06proto3"
+	"\x16http_proxy_access_rule\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\v2\x18.ext.HttpProxyAccessRuleR\x13httpProxyAccessRuleB8Z6github.com/995933447/grpcgateway/example/client/ext;extb\x06proto3"
 
 var (
 	file_ext_proto_rawDescOnce sync.Once
