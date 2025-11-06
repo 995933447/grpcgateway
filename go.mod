@@ -1,4 +1,4 @@
-module github.com/95933447/grpcgateway
+module github.com/995933447/grpcgateway
 
 go 1.24.5
 
