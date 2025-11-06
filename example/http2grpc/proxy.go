@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/95933447/grpcgateway"
-	"github.com/95933447/grpcgateway/example/client/ext"
+	"github.com/995933447/grpcgateway"
+	"github.com/995933447/grpcgateway/example/client/ext"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/valyala/fasthttp"
 	"google.golang.org/grpc"
