@@ -81,8 +81,10 @@ func HandleHttp(
 			return
 		}
 
-		//resp, respHeader, err := InvokeGrpc(packageName, svcName, methodName, params, header, callOpts)
-		respHeader, resp, _, _, err := InvokeGrpcSupportStreamV2(packageName, svcName, methodName, params, nil, header, callOpts)
+		// InvokeGrpc 和 InvokeGrpcSupportStreamV2 都可以调用unary rpc, InvokeGrpc仅支持unary rpc
+		// 但是使用InvokeGrpcSupportStreamV2会被当成stream调用 所有rpc interceptor走的都是stream interceptor
+		resp, respHeader, err := InvokeGrpc(packageName, svcName, methodName, params, header, callOpts)
+		//respHeader, resp, _, _, err := InvokeGrpcSupportStreamV2(packageName, svcName, methodName, params, nil, header, callOpts)
 
 		defer func() {
 			if resp != nil {
