@@ -260,7 +260,10 @@ func RespHttp(res *ResponseHttp) {
 	}
 
 	if res.GrpcResp != nil {
-		b, err := protojson.Marshal(res.GrpcResp)
+		//b, err := protojson.Marshal(res.GrpcResp)
+
+		marshaler := protojson.MarshalOptions{UseProtoNames: true}
+		b, err := marshaler.Marshal(res.GrpcResp)
 		if err != nil {
 			logger.Errorf("err: %+v", err)
 			gatewayResp.ErrCode = -1
