@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+import "ext.proto";
+
+package echo;
+option go_package = "client/echo";
+
+service Echo {
+  rpc BasicEcho(EchoReq) returns (EchoResp) {
+    option (ext.http_proxy_access_rule) = {
+        method: "POST",
+    };
+  };
+
+  rpc NoAuthEcho(EchoReq) returns (EchoResp) {
+    option (ext.http_proxy_access_rule) = {
+        method: "GET"
+        NoAuth: true
+    };
+  };
+
+  rpc NoAuthEchoErr(EchoReq) returns (EchoResp) {
+    option (ext.http_proxy_access_rule) = {
+      method: "GET",
+      NoAuth: true
+    };
+  };
+
+  rpc InnerEcho(EchoReq) returns(EchoResp);
+}
+
+message EchoReq {
+  string echo = 1;
+  string remark = 2;
+  int64 ts = 3;
+}
+
+message EchoResp {
+  string echo = 1;
+  int64 ts = 2;
+}
+
+enum ErrCode {
+  Nil = 0;
+  ErrFail = 1001;
+}
