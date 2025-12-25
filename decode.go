@@ -349,7 +349,6 @@ func setFieldV2(msg *dynamicpb.Message, path []PathNode, raw string) error {
 }
 
 func setFieldValueByNodePath(msg *dynamicpb.Message, fd protoreflect.FieldDescriptor, path []PathNode, raw string) error {
-
 	// ===== MAP =====
 	if fd.IsMap() {
 		if len(path) == 0 || path[0].Kind != PathField {
