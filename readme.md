@@ -481,7 +481,7 @@ err = grpcgateway.HandleHttp(
 
 ## 与 easymicro 集成
 
-工作区中的 `easymicro/grpcgateway/gateway.go` 是对本项目的适配层，它提供：
+`https://github.com/995933447/easymicro/grpcgateway/gateway.go` 是对本项目的适配层，它提供：
 
 | 函数 | 说明 |
 | --- | --- |
