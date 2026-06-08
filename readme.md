@@ -521,7 +521,7 @@ cd test
 3. 启动 `example/http2grpc`。
 4. 通过 HTTP 请求访问 `/echo/Echo/BasicEcho` 或 `/Echo/NoAuthEcho`。
 
-## 错误定义
+## 可以使用的预错误定义
 
 | 错误 | 说明 |
 | --- | --- |
