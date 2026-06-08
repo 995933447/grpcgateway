@@ -584,6 +584,5 @@ gRPC status 错误会输出对应 status code 和 message。
 | 场景 | 原因 |
 | --- | --- |
 | 强规范 OpenAPI 网关 | 本项目不生成 OpenAPI，也不是基于 `google.api.http` 注解。 |
-| 高度定制 REST 语义 | 默认路由是 RPC 风格，不是资源风格 REST。 |
 | 大文件上传 | multipart 文件会读入内存并 base64 编码。 |
 | 默认 HTTP 直接支持 stream | 需要业务另行封装 SSE/WebSocket/chunked 响应。 |
